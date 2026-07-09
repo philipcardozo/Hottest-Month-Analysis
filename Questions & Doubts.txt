@@ -1,0 +1,20 @@
+Need input about the regression image
+
+How many dots and are you measuring temperature with the model
+
+need more ideas and proof of a and bx
+
+Apply it to 2026: $0.585 + 0.903 \times 0.559 = \mathbf{+1.090}$. Best guess for the July 9 print: 1.09, versus the record of 1.18.
+
+NOAA's blend of weather stations and ship/buoy ocean readings responds slightly less than one-for-one to the swings ERA5's physics model sees (different polar coverage, sea-ice handling, ocean inputs).
+
+sigma verification (is it 0.116 > 2*0.064 or 0.046)
+
+wiggle: $\sqrt{0.046^2 + 0.01^2}$. Independent errors add as squares — Pythagoras for uncertainty.)
+
+Read the weights as earned trust. June's mean carries weight 0.87 — the ocean-driven background state persists across adjacent months. Two days of July carry only 0.19 — real evidence, mostly noise. Plug in June (+0.559) and the observed July 1–2 (+0.617, +0.614): forecast ERA5 July = +0.617, ± 0.090 (that ± is this regression's own residual SD — weather unpredictability, three times the translation noise).
+
+$$\mu = 0.566 + 0.892 \times 0.617 = 1.116$$ $$\sigma = \sqrt{(0.892 \times 0.090)^2 + 0.036^2} = 0.088$$ $$Z = \frac{1.185 - 1.116}{0.088} = +0.78 \Rightarrow P(\text{YES}) = \mathbf{21.7\%}$$
+
+Same distance to the record, twice the σ, and the tail fattens enormously (that's the nonlinearity of Φ).
+

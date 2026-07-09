@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hottest Month — Model Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0e14; --card:#131822; --card2:#0f141d; --line:#232b3a;
+    --txt:#dbe2ee; --mut:#8b96a8; --red:#f85149; --green:#3fb950; --gold:#d29922; --blue:#58a6ff;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{background:var(--bg); color:var(--txt); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; padding:22px}
+  h1{font-size:21px; letter-spacing:.2px}
+  h2{font-size:13px; text-transform:uppercase; letter-spacing:1.2px; color:var(--mut); margin-bottom:12px}
+  .sub{color:var(--mut); font-size:12.5px; margin-top:4px}
+  header{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:20px}
+  .stamp{font-size:12px; color:var(--mut); text-align:right}
+  .stamp b{color:var(--txt)}
+  .grid{display:grid; gap:14px}
+  .cards{grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); margin-bottom:14px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px}
+  .big{font-size:34px; font-weight:700; margin:2px 0}
+  .kv{display:flex; justify-content:space-between; font-size:12.5px; padding:3px 0; border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:none}
+  .kv span:first-child{color:var(--mut)}
+  .chip{display:inline-block; padding:2px 9px; border-radius:20px; font-size:11.5px; font-weight:600; margin-left:6px; vertical-align:middle}
+  .pos{background:rgba(63,185,80,.15); color:var(--green); border:1px solid rgba(63,185,80,.4)}
+  .neg{background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.4)}
+  .neu{background:rgba(210,153,34,.15); color:var(--gold); border:1px solid rgba(210,153,34,.4)}
+  .charts{grid-template-columns:repeat(auto-fit,minmax(430px,1fr))}
+  .chartbox{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; min-height:300px}
+  .chartbox canvas{max-height:280px}
+  .toggle{display:flex; align-items:center; gap:10px; background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:13px}
+  .toggle input{transform:scale(1.2)}
+  .cal{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0}
+  .cal div{background:var(--card2); border:1px solid var(--line); border-radius:9px; padding:8px 13px; font-size:12px; color:var(--mut)}
+  .cal b{color:var(--txt); display:block; font-size:12.5px}
+  footer{margin-top:22px; font-size:11.5px; color:var(--mut); border-top:1px solid var(--line); padding-top:14px}
+  code{background:var(--card2); border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:11.5px; color:var(--gold)}
+  #countdown{font-variant-numeric:tabular-nums}
+  .warn{background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.35); color:var(--red); border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:14px; display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🌡️ Hottest Month — Live Model Dashboard</h1>
+    <div class="sub">Kalshi <b>KXHMONTH</b> · ERA5 → NOAA translation model · fair value vs market, updated from live data</div>
+  </div>
+  <div class="stamp">
+    Data engine run: <b id="genat">—</b><br>
+    ERA5 through: <b id="eralatest">—</b> · NOAA June print in: <b id="countdown">—</b>
+  </div>
+</header>
+
+<div class="warn" id="staleWarn">⚠️ data.js is stale (&gt; 12 h old). Run <code>python3 update_data.py</code> (or keep <code>--loop 900</code> running) to refresh Kalshi quotes and ERA5 data.</div>
+
+<div class="toggle">
+  <input type="checkbox" id="biasToggle" checked>
+  <label for="biasToggle"><b>Apply 2026 audit bias</b> (<span id="biasVal">+0.020</span> °C — NOAA's operational prints ran warm vs the historical mapping in Jan–May 2026; unchecked = raw historical model)</label>
+</div>
+
+<div class="grid cards">
+  <div class="card">
+    <h2>June 2026 · model</h2>
+    <div class="big" id="junP">—</div>
+    <div class="sub">probability the NOAA print beats +<span id="junRec">1.18</span> (record, 2024)</div>
+    <div style="margin-top:10px">
+      <div class="kv"><span>Predicted NOAA print</span><span id="junMu">—</span></div>
+      <div class="kv"><span>Z-score to record</span><span id="junZ">—</span></div>
+      <div class="kv"><span>Tie band (prints 1.18)</span><span id="junTie">—</span></div>
+      <div class="kv"><span>Fair NO</span><span id="junFairNo">—</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>June 2026 · market vs model</h2>
+    <div class="big" id="junMkt">—</div>
+    <div class="sub">Kalshi YES last <span id="junLast">—</span> · book <span id="junBook">—</span></div>
+    <div style="margin-top:10px">
+      <div class="kv"><span>NO ask vs fair NO</span><span id="junEdge">—</span></div>
+      <div class="kv"><span>Volume / Open interest</span><span id="junVol">—</span></div>
+      <div class="kv"><span>Verdict</span><span id="junVerdict">—</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>July 2026 · model</h2>
+    <div class="big" id="julP">—</div>
+    <div class="sub">probability July beats +<span id="julRec">1.18</span> · <span id="julK">—</span> days observed</div>
+    <div style="margin-top:10px">
+      <div class="kv"><span>ERA5 forecast (full July)</span><span id="julEra">—</span></div>
+      <div class="kv"><span>Predicted NOAA print</span><span id="julMu">—</span></div>
+      <div class="kv"><span>Record-beating pace needed</span><span id="julNeed">—</span></div>
+      <div class="kv"><span>Fair NO</span><span id="julFairNo">—</span></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>July 2026 · market vs model</h2>
+    <div class="big" id="julMkt">—</div>
+    <div class="sub">Kalshi YES last <span id="julLast">—</span> · book <span id="julBook">—</span></div>
+    <div style="margin-top:10px">
+      <div class="kv"><span>NO ask vs fair NO</span><span id="julEdge">—</span></div>
+      <div class="kv"><span>Volume / Open interest</span><span id="julVol">—</span></div>
+      <div class="kv"><span>Verdict</span><span id="julVerdict">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="cal">
+  <div><b>Jul 7–8</b> TempLS June estimate (moyhu) — NOAA-method replication sanity check</div>
+  <div><b>Jul 9 · 11 AM ET</b> NOAA June print → June market settles</div>
+  <div><b>Jul 17–18</b> Day-15 checkpoint — July σ halves</div>
+  <div><b>Jul 28</b> Day-26 checkpoint — July σ ≈ 0.017, market still open</div>
+  <div><b>~Aug 13</b> NOAA July print → July market settles</div>
+</div>
+
+<div class="grid charts">
+  <div class="chartbox"><h2>July 2026 tracking — running mean vs record pace (ERA5)</h2><canvas id="chTrack"></canvas></div>
+  <div class="chartbox"><h2>Predicted NOAA print distributions vs the record</h2><canvas id="chDist"></canvas></div>
+  <div class="chartbox"><h2>The translation regression — June: NOAA vs ERA5 (1990–2025)</h2><canvas id="chReg"></canvas></div>
+  <div class="chartbox"><h2>July variance collapse — total σ vs days observed</h2><canvas id="chCollapse"></canvas></div>
+  <div class="chartbox"><h2>Kalshi YES price — June &amp; July markets</h2><canvas id="chKalshi"></canvas></div>
+  <div class="chartbox"><h2>Fair value vs market (NO side, ¢)</h2><canvas id="chEdge"></canvas></div>
+</div>
+
+<footer>
+  <b>How the numbers are made:</b> ERA5 daily global anomalies (Copernicus Climate Pulse) are averaged into monthly means; a per-month OLS regression (1990–2025) translates ERA5 into NOAA's settlement scale; incomplete months use a two-predictor conditional forecast (previous month + observed days); the record threshold (+0.005 for 2-decimal rounding) is compared against a Normal(μ,σ) with σ combining forecast and translation residuals. Full derivation: <code>Model_Analysis.ipynb</code> · market analytics: <code>Kalshi.ipynb</code>.<br><br>
+  <b>24/7 updates:</b> keep <code>python3 update_data.py --loop 900</code> running (refreshes Kalshi every 15 min; ERA5/NOAA when &gt;6 h stale). The page reloads <code>data.js</code> every 5 minutes automatically when served over HTTP (<code>python3 -m http.server 8000</code> in this folder → open <code>http://localhost:8000/Dashboard.html</code>); on file:// just press ⌘R.<br><br>
+  Not financial advice. Model assumptions and limitations documented in the notebooks — normality, mapping stationarity, scalar input, small-sample bias estimate.
+</footer>
+
+<script src="data.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (x,d=1) => (x*100).toFixed(d);
+function ncdf(x){ // Abramowitz–Stegun approximation
+  const t = 1/(1+0.2316419*Math.abs(x));
+  const d = 0.3989423*Math.exp(-x*x/2);
+  let p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+  return x > 0 ? 1-p : p;
+}
+const hypot = (a,b) => Math.sqrt(a*a+b*b);
+let charts = {};
+
+function model(biasOn){
+  const M = window.HM_DATA.model, bias = biasOn ? M.bias : 0;
+  const jm = M.jun;
+  const muJ = jm.a + jm.b*jm.era26 + bias, sJ = hypot(jm.sd, 0.01);
+  const thrJ = jm.record + 0.005;
+  const pJ = 1 - ncdf((thrJ - muJ)/sJ);
+  const tieJ = ncdf((jm.record+0.005-muJ)/sJ) - ncdf((jm.record-0.005-muJ)/sJ);
+  const lm = M.jul, fc = lm.fc;
+  const eraL = fc.c[0] + fc.c[1]*jm.era26 + fc.c[2]*fc.firstk;
+  const muL = lm.a + lm.b*eraL + bias, sL = hypot(lm.b*fc.sd_f, lm.sd);
+  const pL = 1 - ncdf((lm.record + 0.005 - muL)/sL);
+  return {muJ, sJ, pJ, tieJ, ZJ:(thrJ-muJ)/sJ, muL, sL, pL, ZL:(lm.record+0.005-muL)/sL, eraL, k:fc.k};
+}
+
+function verdict(edge){
+  if (edge >= 3) return ['NO underpriced', 'pos'];
+  if (edge <= -3) return ['NO overpriced', 'neg'];
+  return ['≈ fairly priced', 'neu'];
+}
+
+function render(){
+  const D = window.HM_DATA, biasOn = $('biasToggle').checked;
+  const R = model(biasOn);
+  $('biasVal').textContent = (D.model.bias>=0?'+':'') + D.model.bias.toFixed(3);
+  $('genat').textContent = new Date(D.generated_at).toLocaleString();
+  $('eralatest').textContent = D.era5_latest_day;
+  const ageH = (Date.now() - new Date(D.generated_at)) / 3.6e6;
+  $('staleWarn').style.display = ageH > 12 ? 'block' : 'none';
+
+  $('junP').textContent = fmt(R.pJ) + '%';
+  $('junRec').textContent = D.model.jun.record.toFixed(2);
+  $('junMu').textContent = '+' + R.muJ.toFixed(3) + ' ± ' + R.sJ.toFixed(3);
+  $('junZ').textContent = R.ZJ.toFixed(2);
+  $('junTie').textContent = fmt(R.tieJ) + '%';
+  const fairNoJ = (1 - R.pJ - R.tieJ*0.5) * 100;   // tie counted half to NO
+  $('junFairNo').textContent = fairNoJ.toFixed(1) + '¢';
+  const KJ = D.kalshi.JUN;
+  if (KJ){
+    $('junMkt').textContent = KJ.yes_ask + '¢ YES';
+    $('junLast').textContent = KJ.last + '¢';
+    $('junBook').textContent = `YES ${KJ.yes_bid}/${KJ.yes_ask} · NO ${KJ.no_bid}/${KJ.no_ask}`;
+    $('junVol').textContent = `${Math.round(KJ.volume).toLocaleString()} / ${Math.round(KJ.oi).toLocaleString()}`;
+    const edgeJ = fairNoJ - KJ.no_ask;
+    $('junEdge').innerHTML = `${KJ.no_ask}¢ vs ${fairNoJ.toFixed(0)}¢ <span class="chip ${edgeJ>=3?'pos':edgeJ<=-3?'neg':'neu'}">${edgeJ>=0?'+':''}${edgeJ.toFixed(1)}¢</span>`;
+    const [vt, vc] = verdict(edgeJ);
+    $('junVerdict').innerHTML = `<span class="chip ${vc}">${vt}</span>`;
+  }
+  $('julP').textContent = fmt(R.pL) + '%';
+  $('julRec').textContent = D.model.jul.record.toFixed(2);
+  $('julK').textContent = R.k;
+  $('julEra').textContent = '+' + R.eraL.toFixed(3);
+  $('julMu').textContent = '+' + R.muL.toFixed(3) + ' ± ' + R.sL.toFixed(3);
+  const needEra = (D.model.jul.record + 0.005 - (biasOn?D.model.bias:0) - D.model.jul.a) / D.model.jul.b;
+  $('julNeed').textContent = '≥ +' + needEra.toFixed(3) + ' ERA5 full-month';
+  const fairNoL = (1 - R.pL) * 100;
+  $('julFairNo').textContent = fairNoL.toFixed(1) + '¢';
+  const KL = D.kalshi.JUL;
+  if (KL){
+    $('julMkt').textContent = KL.yes_ask + '¢ YES';
+    $('julLast').textContent = KL.last + '¢';
+    $('julBook').textContent = `YES ${KL.yes_bid.toFixed(0)}/${KL.yes_ask} · NO ${KL.no_bid.toFixed(0)}/${KL.no_ask}`;
+    $('julVol').textContent = `${Math.round(KL.volume).toLocaleString()} / ${Math.round(KL.oi).toLocaleString()}`;
+    const edgeL = fairNoL - KL.no_ask;
+    $('julEdge').innerHTML = `${KL.no_ask}¢ vs ${fairNoL.toFixed(0)}¢ <span class="chip ${edgeL>=3?'pos':edgeL<=-3?'neg':'neu'}">${edgeL>=0?'+':''}${edgeL.toFixed(1)}¢</span>`;
+    const [vt, vc] = verdict(edgeL);
+    $('julVerdict').innerHTML = `<span class="chip ${vc}">${vt}</span>`;
+  }
+  drawCharts(R, biasOn);
+}
+
+function mkChart(id, cfg){
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id), cfg);
+}
+const gridC = 'rgba(139,150,168,.12)', tickC = '#8b96a8';
+const baseOpts = { responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{labels:{color:'#dbe2ee', boxWidth:14, font:{size:11}}} },
+  scales:{ x:{grid:{color:gridC}, ticks:{color:tickC}}, y:{grid:{color:gridC}, ticks:{color:tickC}} } };
+
+function drawCharts(R, biasOn){
+  const D = window.HM_DATA, T = D.tracking;
+  const days = Array.from({length:31}, (_,i)=>i+1);
+  const pace = (D.model.jul.record+0.005-D.model.jul.a)/D.model.jul.b;
+  mkChart('chTrack', { type:'line',
+    data:{ labels:days, datasets:[
+      {label:'July 2026 (live)', data:T.jul26, borderColor:'#d29922', backgroundColor:'#d29922', borderWidth:3, pointRadius:2, tension:.3},
+      {label:'July 2024 (NOAA record yr)', data:T.jul24, borderColor:'#f85149', borderWidth:1.5, pointRadius:0, tension:.3},
+      {label:'July 2023 (ERA5 record yr)', data:T.jul23, borderColor:'#58a6ff', borderWidth:1.5, pointRadius:0, borderDash:[5,4], tension:.3},
+      {label:`record-beating full-month pace (+${pace.toFixed(3)})`, data:days.map(()=>pace), borderColor:'rgba(248,81,73,.7)', borderWidth:2, pointRadius:0, borderDash:[2,3]},
+    ]},
+    options:{...baseOpts, scales:{...baseOpts.scales, y:{...baseOpts.scales.y, title:{display:true, text:'running mean anomaly (°C vs 1991–2020)', color:tickC}}}}
+  });
+  const mk = (mu,s,n=120)=>{ const pts=[]; for(let i=0;i<=n;i++){ const x=mu-4*s+(8*s*i)/n; pts.push({x:+x.toFixed(4), y:+(Math.exp(-((x-mu)**2)/(2*s*s))/(s*Math.sqrt(2*Math.PI))).toFixed(3)});} return pts; };
+  const junC=mk(R.muJ,R.sJ), julC=mk(R.muL,R.sL);
+  const rec = D.model.jun.record;
+  mkChart('chDist', { type:'line',
+    data:{ datasets:[
+      {label:`June (μ ${R.muJ.toFixed(3)})`, data:junC, borderColor:'#d29922', pointRadius:0, borderWidth:2.5, tension:.35},
+      {label:'June tail ≥ 1.185', data:junC.filter(p=>p.x>=rec+.005), borderColor:'transparent', backgroundColor:'rgba(248,81,73,.45)', fill:'origin', pointRadius:0},
+      {label:`July (μ ${R.muL.toFixed(3)})`, data:julC, borderColor:'#58a6ff', pointRadius:0, borderWidth:2, borderDash:[6,4], tension:.35},
+      {label:'July tail ≥ 1.185', data:julC.filter(p=>p.x>=rec+.005), borderColor:'transparent', backgroundColor:'rgba(88,166,255,.35)', fill:'origin', pointRadius:0},
+      {label:`record ${rec.toFixed(2)}`, data:[{x:rec,y:0},{x:rec,y:Math.max(...junC.map(p=>p.y))}], borderColor:'#f85149', borderWidth:2, pointRadius:0},
+    ]},
+    options:{...baseOpts, scales:{ x:{type:'linear', grid:{color:gridC}, ticks:{color:tickC}, title:{display:true,text:'NOAA anomaly (°C)',color:tickC}}, y:{display:false} }}
+  });
+  const S = D.model.scatter_jun, jm = D.model.jun;
+  const xs = S.map(p=>p[0]); const xmin=Math.min(...xs)-0.03, xmax=Math.max(...xs)+0.12;
+  mkChart('chReg', { type:'scatter',
+    data:{ datasets:[
+      {label:'Junes 1990–2025', data:S.map(p=>({x:p[0],y:p[1]})), backgroundColor:'rgba(88,166,255,.75)', pointRadius:4},
+      {label:`fit: ${jm.a.toFixed(3)} + ${jm.b.toFixed(3)}·x`, type:'line', data:[{x:xmin,y:jm.a+jm.b*xmin},{x:xmax,y:jm.a+jm.b*xmax}], borderColor:'#dbe2ee', borderWidth:2, pointRadius:0},
+      {label:`June 2026 → pred ${(jm.a+jm.b*jm.era26+(biasOn?D.model.bias:0)).toFixed(3)}`, data:[{x:jm.era26, y:jm.a+jm.b*jm.era26+(biasOn?D.model.bias:0)}], backgroundColor:'#d29922', pointStyle:'rectRot', pointRadius:9},
+      {label:`record ${jm.record.toFixed(2)} (2024)`, type:'line', data:[{x:xmin,y:jm.record},{x:xmax,y:jm.record}], borderColor:'rgba(248,81,73,.8)', borderWidth:1.5, borderDash:[4,4], pointRadius:0},
+    ]},
+    options:{...baseOpts, scales:{ x:{type:'linear', grid:{color:gridC}, ticks:{color:tickC}, title:{display:true,text:'ERA5 June anomaly',color:tickC}}, y:{grid:{color:gridC}, ticks:{color:tickC}, title:{display:true,text:'NOAA June anomaly',color:tickC}} }}
+  });
+  const C = D.model.collapse;
+  mkChart('chCollapse', { type:'line',
+    data:{ labels:C.map(c=>c.k), datasets:[
+      {label:'total σ on NOAA scale', data:C.map(c=>c.sd_noaa), borderColor:'#3fb950', borderWidth:2.5, pointRadius:C.map(c=>c.k===R.k?8:4), pointBackgroundColor:C.map(c=>c.k===R.k?'#d29922':'#3fb950'), tension:.3},
+    ]},
+    options:{...baseOpts, scales:{ x:{grid:{color:gridC}, ticks:{color:tickC}, title:{display:true,text:'July days observed (gold dot = today)',color:tickC}}, y:{grid:{color:gridC}, ticks:{color:tickC}, title:{display:true,text:'σ (°C)',color:tickC}} }}
+  });
+  const KJ = D.kalshi.JUN, KL = D.kalshi.JUL;
+  if (KJ){
+    const labels = KJ.candles.map(c=>c[0]);
+    const julByDate = Object.fromEntries((KL?KL.candles:[]).map(c=>[c[0],c[1]]));
+    mkChart('chKalshi', { type:'line',
+      data:{ labels, datasets:[
+        {label:'June market YES (¢)', data:KJ.candles.map(c=>c[1]), borderColor:'#d29922', borderWidth:2.5, pointRadius:2, tension:.25},
+        {label:'July market YES (¢)', data:labels.map(l=>julByDate[l] ?? null), borderColor:'#58a6ff', borderWidth:2, pointRadius:2, borderDash:[6,4], tension:.25, spanGaps:true},
+      ]},
+      options:{...baseOpts, scales:{...baseOpts.scales, y:{...baseOpts.scales.y, title:{display:true,text:'YES price (¢)',color:tickC}}}}
+    });
+  }
+  const fairNoJ = (1-R.pJ-R.tieJ*0.5)*100, fairNoL = (1-R.pL)*100;
+  mkChart('chEdge', { type:'bar',
+    data:{ labels:['June fair NO','June market NO ask','July fair NO','July market NO ask'],
+      datasets:[{ label:'¢', data:[fairNoJ, KJ?KJ.no_ask:null, fairNoL, KL?KL.no_ask:null],
+        backgroundColor:['rgba(63,185,80,.7)','rgba(210,153,34,.7)','rgba(63,185,80,.45)','rgba(210,153,34,.45)'] }]},
+    options:{...baseOpts, indexAxis:'y', plugins:{legend:{display:false}},
+      scales:{ x:{min:50, max:100, grid:{color:gridC}, ticks:{color:tickC}}, y:{grid:{display:false}, ticks:{color:tickC}} }}
+  });
+}
+
+function tick(){
+  const t = new Date('2026-07-09T15:00:00Z') - Date.now();
+  $('countdown').textContent = t <= 0 ? 'RELEASED — check NOAA' :
+    `${Math.floor(t/864e5)}d ${Math.floor(t%864e5/36e5)}h ${Math.floor(t%36e5/6e4)}m`;
+}
+setInterval(tick, 30000); tick();
+
+setInterval(() => {
+  fetch('data.js?t=' + Date.now()).then(r => r.text()).then(t => { (new Function(t))(); render(); }).catch(()=>{});
+}, 300000);
+
+$('biasToggle').addEventListener('change', render);
+if (window.HM_DATA) render();
+else document.body.insertAdjacentHTML('afterbegin',
+  '<div class="warn" style="display:block">data.js not found — run <code>python3 update_data.py</code> in this folder first.</div>');
+</script>
+</body>
+</html>
