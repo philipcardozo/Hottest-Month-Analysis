@@ -99,14 +99,68 @@ def refresh_once():
         X = [(mm(y,6), sum(daily[(y,7)][d] for d in range(1,k+1))/k) for y in FIT_YEARS]
         c, sdf = ols2(X, [mm(y,7) for y in FIT_YEARS])
         julmodel = {'c': c, 'sd_f': sdf, 'k': k, 'firstk': firstk_26}
+    # ---- ECMWF IFS augmentation (Open-Meteo JSON; see fetch_forecast.py) ----
+    ens = None
+    try:
+        import fetch_forecast as ff
+        gm = ff.load_cached() or ff.fetch_global_mean()
+        anom, off, nov = ff.to_anomaly(gm)
+        obs = daily.get((2026,7), {})
+        fdays = {int(t[8:]): v for t, v in anom.items()
+                 if t.startswith('2026-07-') and int(t[8:]) > k}
+        k_eff = max(fdays) if fdays else 0
+        # need contiguous coverage days k+1..k_eff for the first-k_eff regression to apply
+        if k >= 1 and fdays and len(fdays) == k_eff - k:
+            pseudo = (sum(obs[d] for d in range(1, k+1)) + sum(fdays.values())) / k_eff
+            X = [(mm(y,6), sum(daily[(y,7)][d] for d in range(1, k_eff+1))/k_eff) for y in FIT_YEARS]
+            ce, sdfe = ols2(X, [mm(y,7) for y in FIT_YEARS])
+            mu_era = ce[0] + ce[1]*mm(2026,6) + ce[2]*pseudo
+            # ponytail: assumed IFS global-mean daily error 0.015*lead^0.7 C (cap 0.15),
+            # 0.6 correlation mix across leads; replace with forecast_log-measured skill later
+            errsum = sum(min(0.015*max(d-k,1)**0.7, 0.15) for d in fdays)
+            sd_fe = math.hypot(sdfe, 0.6*errsum/31)
+            rm = [None]*31            # projected running mean (obs + forecast), for the chart
+            cum = sum(obs[d] for d in range(1, k+1))
+            rm[k-1] = round(cum/k, 4)
+            for dd in range(k+1, k_eff+1):
+                cum += fdays[dd]
+                rm[dd-1] = round(cum/dd, 4)
+            ens = {'k_eff': k_eff, 'n_fcst': len(fdays), 'anchor_offset': round(off,4),
+                   'c2': round(ce[2],4), 'pseudo_mean': round(pseudo,4), 'mu_era5': round(mu_era,4),
+                   'sd_f': round(sd_fe,4), 'sd_f_hist_only': round(sdfe,4),
+                   'fc_rem_mean': round(sum(fdays.values())/len(fdays), 4),
+                   'runmean_fcst': rm}
+    except Exception as e:
+        print("ENS augmentation skipped:", e)
+
+    # ---- 51-member ENS result (July Calibration/ens_spread.py), if fresh (<24h) ----
+    ens51 = None
+    try:
+        cal = os.path.join(HERE, 'July Calibration')
+        js = sorted(f for f in os.listdir(cal) if f.startswith('ens_spread_ecmwf_ifs025_'))
+        if js:
+            p = os.path.join(cal, js[-1])
+            if time.time() - os.path.getmtime(p) < 24*3600:
+                e5 = json.load(open(p))
+                mem = e5.get('member_july_mean_era5', [])
+                noaa_blk = e5.get('noaa', {})
+                if mem and noaa_blk:
+                    ens51 = {'p_yes_pct': noaa_blk['p_yes_pct'],
+                             'n_members': e5['n_members'], 'k_obs': e5['k_obs'],
+                             'members_central_breach': noaa_blk['members_central_breach'],
+                             'median_era5': sorted(mem)[len(mem)//2],
+                             'pulled_at': e5['pulled_at']}
+    except Exception as e:
+        print("ens51 read skipped:", e)
+
     collapse = []
     for kk in (2,5,10,15,20,26,31):
         X = [(mm(y,6), sum(daily[(y,7)][d] for d in range(1,kk+1))/kk) for y in FIT_YEARS]
         _, s = ols2(X, [mm(y,7) for y in FIT_YEARS])
         collapse.append({'k': kk, 'sd_noaa': math.hypot(bL*s, sdL)})
-    # audit bias (Jan-May 2026)
+    # audit bias (2026 prints to date; June printed 2026-07-09 = datapoint #6, resid -0.004)
     biases = []
-    for m in range(1,6):
+    for m in range(1,7):
         p = os.path.join(HERE, f'noaa_m{m}.json')
         if stale(p, hours=24*7): get_json_file(NOAA_URL.format(m=m), p)
         if not os.path.exists(p): continue
@@ -147,9 +201,10 @@ def refresh_once():
             'jun': {'a': aJ, 'b': bJ, 'sd': sdJ, 'era26': jun26,
                     'record': max(v for y,v in noaa[6].items() if y<2026)},
             'jul': {'a': aL, 'b': bL, 'sd': sdL, 'record': max(v for y,v in noaa[7].items() if y<2026),
-                    'fc': julmodel},
+                    'fc': julmodel, 'ens': ens, 'ens51': ens51},
             'bias': bias, 'collapse': collapse,
             'scatter_jun': [[mm(y,6), noaa[6][y], y] for y in FIT_YEARS],
+            'scatter_jul': [[mm(y,7), noaa[7][y], y] for y in FIT_YEARS],
         },
         'tracking': {'jul26': run_mean(2026,7), 'jul24': run_mean(2024,7), 'jul23': run_mean(2023,7),
                      'jun26': run_mean(2026,6), 'jun24': run_mean(2024,6)},

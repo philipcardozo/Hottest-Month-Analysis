@@ -1,0 +1,6 @@
+2026-07-10 07:52Z | k=8 mean +0.659 need +0.706 | ENS P(YES) 0.6% | dev3 +0.000 | mkt YES 24.0/25.0 | refresh OK
+2026-07-10 14:46Z | k=8 mean +0.659 need +0.706 | ENS P(YES) 0.5% | dev3 +0.000 | mkt YES 24.0/25.0 | refresh OK
+2026-07-11 09:35Z | k=9 mean +0.663 need +0.707 | ENS P(YES) 0.4% | dev3 +0.000 | mkt YES 23.0/24.0 | refresh OK
+2026-07-11 12:32Z | k=9 mean +0.663 need +0.707 | ENS P(YES) 0.4% | dev3 +0.000 | mkt YES 21.0/22.0 | refresh OK
+2026-07-12 13:01Z | k=9 mean +0.663 need +0.707 | ENS P(YES) n/a | dev3 +0.000 | mkt YES 22.0/23.0 | refresh OK
+2026-07-13 12:46Z | k=9 mean +0.663 need +0.707 | ENS P(YES) n/a | dev3 +0.000 | mkt YES 24.0/25.0 | refresh OK

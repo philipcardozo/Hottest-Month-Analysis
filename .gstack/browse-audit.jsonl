@@ -1,0 +1,8 @@
+{"ts":"2026-07-23T18:06:48.440Z","cmd":"newtab","args":"--json","origin":"about:blank","durationMs":41,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-23T18:06:48.628Z","cmd":"load-html","args":"--from-file /tmp/make-pdf-browse-60191-ad794b0abc21.json","origin":"about:blank","durationMs":14,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-23T18:06:48.731Z","cmd":"pdf","args":"/Users/felipecardozo/Desktop/Deletable/PRIMER_How_It_All_Works.pdf --format letter --margin-top 1in --margin-right 1in --margin-bottom 1in --margin-left 1in --tagged --outline --toc","origin":"about:blank","durationMs":1,"status":"error","hasCookies":false,"mode":"launched","error":"Path must be within: /private/tmp, /Users/felipecardozo/Desktop/Stats/Hottest Month"}
+{"ts":"2026-07-23T18:06:48.786Z","cmd":"closetab","args":"2","origin":"about:blank","durationMs":3,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-23T18:06:59.966Z","cmd":"newtab","args":"--json","origin":"about:blank","durationMs":270,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-23T18:07:00.070Z","cmd":"load-html","args":"--from-file /tmp/make-pdf-browse-60221-ad794b0abc21.json","origin":"about:blank","durationMs":20,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-23T18:07:03.496Z","cmd":"pdf","args":"/private/tmp/PRIMER_How_It_All_Works.pdf --format letter --margin-top 1in --margin-right 1in --margin-bottom 1in --margin-left 1in --tagged --outline --toc","origin":"about:blank","durationMs":3255,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-23T18:07:03.599Z","cmd":"closetab","args":"3","origin":"about:blank","durationMs":3,"status":"ok","hasCookies":false,"mode":"launched"}
