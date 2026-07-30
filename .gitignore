@@ -1,0 +1,21 @@
+# Secrets — never commit
+.env
+*.pem
+*.key
+
+# macOS / editor / Office junk
+.DS_Store
+~$*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local tooling state
+.gstack/
+.vscode/
+
+# Logs
+*.log
