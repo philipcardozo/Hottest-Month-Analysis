@@ -19,3 +19,6 @@ venv/
 
 # Logs
 *.log
+
+# Nested repo w/ its own remote + plaintext CDS key — never publish
+July Calibration/Felipe/

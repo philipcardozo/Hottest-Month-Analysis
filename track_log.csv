@@ -37,3 +37,7 @@ WARN dip-check: 2026-07-28 04:18Z | k=26 mean +0.661 need +0.864 | ENS P(YES) 24
 WARN dip-check: 2026-07-28 12:17Z | k=26 mean +0.661 need +0.864 | ENS P(YES) 27.7% | dev3 +0.108 | mkt YES 30.0/33.0 | refresh OK
 WARN dip-check: 2026-07-29 04:22Z | k=27 mean +0.665 need +0.886 | ENS P(YES) 28.2% | dev3 +0.117 | mkt YES 30.0/32.0 | refresh OK
 WARN dip-check: 2026-07-29 12:17Z | k=27 mean +0.665 need +0.886 | ENS P(YES) 28.2% | dev3 +0.117 | mkt YES 24.0/27.0 | refresh OK
+WARN dip-check: 2026-07-30 04:22Z | k=28 mean +0.668 need +0.933 | ENS P(YES) 29.2% | dev3 +0.078 | mkt YES 21.0/26.0 | refresh OK
+WARN dip-check: 2026-07-30 12:17Z | k=28 mean +0.668 need +0.933 | ENS P(YES) 29.2% | dev3 +0.078 | mkt YES 31.0/33.0 | refresh OK
+WARN dip-check: 2026-07-31 00:41Z | k=28 mean +0.668 need +0.933 | ENS P(YES) 28.3% | dev3 +0.078 | mkt YES 22.0/23.0 | refresh OK
+WARN dip-check: 2026-07-31 00:46Z | k=28 mean +0.668 need +0.933 | ENS P(YES) 28.3% | dev3 +0.078 | mkt YES 22.0/23.0 | refresh OK

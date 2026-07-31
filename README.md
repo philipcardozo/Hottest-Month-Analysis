@@ -18,7 +18,7 @@ The two use ERA5 differently, and the distinction matters:
 
 # Part I — Hottest Month (Kalshi KXHMONTH)
 
-Markets settle on the **NOAA NCEI Climate-at-a-Glance** global land+ocean temperature anomaly (2 decimals, baseline 1901–2000). Contract rules are in [HMONTH.pdf](HMONTH.pdf).
+Markets settle on the **NOAA NCEI Climate-at-a-Glance** global land+ocean temperature anomaly (2 decimals, baseline 1901–2000). Contract rules are in [docs/HMONTH.pdf](docs/HMONTH.pdf).
 
 ## The edge
 
@@ -58,11 +58,14 @@ Sizing takes the **worst-tail** probability across methods (t-distribution, ENS,
 | `fetch_forecast.py` | NWP forward-path retrieval (ECMWF / GFS / ICON / GEM deterministic runs). |
 | `kalshi_client.py` | Authenticated Kalshi client — RSA-PSS-SHA256 request signing. **Read-only** (balance, positions, fills); no order placement. |
 | `Dashboard.html` | Live dashboard; reloads `data.js` every 5 minutes. |
-| `backtest.py`, `overfit_test.py`, `variance_collapse.py` | Validation harnesses: historical replay, overfit checks, variance-collapse curve. |
+| `backtest.py`, `overfit_test.py` | Validation harnesses: historical replay, out-of-sample calibration, overfit checks. |
 | `July Calibration/` | Multi-angle stress test of the July 2026 market — ensemble spread, calibration, market angles, playbook and analysis writeups. |
 | `era5_daily.csv`, `noaa_m*.json`, `gistemp.txt`, `kalshi_data/` | Cached source data. `gistemp.txt` is NASA GISTEMP (Polymarket's settlement source, *not* NOAA's). |
-| `forecast_log/`, `track_log.csv` | Append-only forecast and deviation history. |
-| `CLAUDE.md` | Working research log — dated model states, decisions, open questions, lessons. |
+| `forecast_log/`, `track_log.csv`, `era5_release_times.csv` | Append-only forecast, deviation and publish-time history. |
+| `era5_watch.sh` | Polls for a specific ERA5 day, prints the anomaly, logs the publish time. Uses `caffeinate` so the Mac cannot sleep through a release. |
+| `docs/` | Contract rules (`HMONTH.pdf`), spreadsheets, notes. Not read by any script. |
+| `archive/` | Retired code with zero references — June release sniper, `variance_collapse.*`, legacy `noaa_june/july.json`. |
+| `CLAUDE.md` | Project guidance: purpose, communication conventions, invariants, current state, validated and rejected results. |
 
 ## Setup
 

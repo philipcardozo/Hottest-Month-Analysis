@@ -1,54 +1,242 @@
-# Hottest Month — Kalshi KXHMONTH trading model
+# Hottest-Month-Analysis — Kalshi KXHMONTH pricing model
 
-## What this project is
-Quantitative model + dashboard for Kalshi's "Will <month> 2026 be the hottest <month> ever?" markets (settle on NOAA NCEI Climate-at-a-Glance global land+ocean anomaly, 2 decimals, vs 1901–2000; rules in `HMONTH.pdf`). Core edge: ERA5 publishes daily with ~2-day lag; NOAA publishes ~day 9–14 of the next month. The model converts the fast signal into the slow settlement number ahead of the print.
+## Purpose
+
+Produce an honest, defensible probability that a given month sets a global
+temperature record, and trade the gap against Kalshi's KXHMONTH market
+("Will ‹month› ‹year› be the hottest ‹month› ever?").
+
+The edge is **timing**: ERA5 publishes a global daily temperature with a ~2-day
+lag; NOAA — which actually settles the contract — publishes ~day 8–14 of the
+following month. This project converts the fast daily signal into the slow
+settlement number weeks before the print.
+
+The deliverable is **a calibrated probability, not a forecast**. Being
+directionally right while overstating confidence is a failure, not a win.
+
+---
+
+## How to communicate in this project
+
+The user is quantitatively fluent and time-constrained. Optimize for decisions,
+not for demonstrating work.
+
+**Lead with the answer.** Number first, evidence second, methodology only if
+asked or if it changes the number.
+
+**Only surface information that can change a decision.** Cache states, byte
+counts, file mtimes, "I verified X matches Y" — that is internal plumbing. Do
+not narrate it. If a check matters, report only its *consequence* ("data was 2
+days stale, so that 40.8% was computed on the wrong day count").
+
+**Never let prose outrun the model.** If the model says 14%, do not write
+"mathematically settled" or "no scenario where YES wins." Calibrate language to
+the number. This has been a real, repeated failure in this project.
+
+**Report brackets, not false precision.** When engines disagree (deterministic
+vs ensemble vs multimodel), quote the range and name which is which. A single
+number hiding a 3%–40% spread is a lie.
+
+**Own errors in one line and move on.** State the correction, fix it, continue.
+No apology paragraphs, no re-litigating.
+
+**Formats that work here:** scenario tables with an explicit verdict column;
+"what would change my mind" trigger tables with thresholds; arrival calendars
+with exact local times. Prefer these to prose.
+
+**Do not act on the market unasked.** Report fair value, market price, and the
+arithmetic. The position decision is the user's. There is no order-placement
+code in this repo by design — keep it that way unless explicitly instructed.
+
+---
+
+## The model
+
+```
+ERA5 daily anomalies  →  month-to-date mean
+      + forecast for remaining days (ECMWF IFS, anchored to ERA5)
+      →  full-month ERA5 estimate
+      →  NOAA = a + b × ERA5        (per-month OLS, fit 1990–2025)
+      →  Normal tail vs threshold  →  fair price  →  edge vs book
+```
+
+July: `NOAA = 0.5686 + 0.8891 × ERA5`, σ = 0.0360, n = 36.
+June: `NOAA = 0.5871 + 0.9064 × ERA5`, σ = 0.0451.
+
+### Threshold discipline — get this right every time
+
+NOAA prints to **2 decimals**. The July record is **1.18** (2024).
+
+| Outcome | NOAA print | True value | ERA5 equivalent |
+|---|---|---|---|
+| **WIN** | 1.19 | ≥ **1.185** | **0.69328** |
+| TIE — **settles NO** | 1.18 | ≥ 1.175 | 0.68765 |
+
+Always price against **1.185 / ERA5 0.69328**. The tie band is ~10% of the
+distribution and it pays NO. Quoting the 1.18 threshold overstates P(YES) by
+about 9 points — this mistake has been made here; do not repeat it.
+
+Known cosmetic inconsistency: `daily_check.py` hardcodes `0.694` for its "need"
+figure instead of `0.69328`, so its per-day number runs ~0.007 high. Harmless in
+the digest, but do not quote it as the precise bar.
+
+### Contract rules (verified against `docs/HMONTH.pdf`, Jul 2026)
+
+- Payout criterion: *"…is the hottest ‹month› recorded."* **There is no numeric
+  strike in the contract** — it is a comparison to the record, not a threshold.
+- A tie is not "the hottest." Base case: **tie = NO**. Not airtight; there is no
+  explicit tie clause and Kalshi retains a Market Outcome Review Process.
+- *"Revisions made after Expiration will not be accounted for"* → revisions
+  **before** expiration **do** count. **The record itself can move.** If NOAA
+  revises July 2024 down off 1.18, a 1.18 print in 2026 wins. Unmodeled.
+- The PDF says last trading = last day of month. **Superseded by the live market
+  config** (`close_time` ≈ 2 weeks after month end; June traded through its Jul 9
+  settlement). Verify via the API, not the PDF.
+
+---
+
+## Non-negotiable invariants
+
+**Anchor every forecast to ERA5 before use.** Raw model global means carry
+per-center absolute biases of ±0.12 °C. Anchoring removes them. An unanchored
+multi-center spread is mostly calibration offset, not predictive uncertainty —
+measured: ~57% of the maximum between-center spread is already present at zero
+forecast lead.
+
+**Sanity-guard the anchor.** A valid offset is ~±0.15. `ens_spread.py` asserts
+`abs(off) < 0.5`. Any throwaway analysis script must do the same — an unguarded
+script once produced a plausible-looking "ICON = 63.8%" from a −5.9 °C offset.
+**Never report a number from a script lacking this assert.**
+
+**Verify a new calculation against the production pipeline before trusting it.**
+The reconstruction that reproduced production exactly (r = 1.0000) was
+trustworthy; a coarser-grid version was noise dressed as signal and gave the
+opposite answer.
+
+**Decompose taker flow before believing a price move.** Contracts ≠ dollars. A
+20-point YES crash on "4,630 volume" was ~$180 of two-way flow in a thin book,
+fully retraced within the hour.
+
+**Check data freshness explicitly.** `update_data.py` refetches only when files
+are >6h stale (`stale()`, ~line 60). If a refetch fires minutes before ERA5
+publishes, the guard serves stale data through the next run. Symptom: `k` does
+not advance. Fix: `touch -t <yesterday> era5_daily.csv`, then re-run.
+
+---
+
+## Current state — 2026-07-30
+
+**July is effectively decided; only the translation residual is live.**
+
+- k=28, MTD **+0.6684**, 3 days left. Required: **+0.9255/day**.
+- Hottest July day ever recorded: **+0.905**. Hottest July 2026 day: **+0.794**.
+- **Even three consecutive all-time-record days → 1.1832 → prints 1.18 → tie →
+  NO.** The weather path is arithmetically closed.
+- P(YES) ≈ **28%**, now ~entirely "does the ERA5→NOAA residual print ≥ +0.021
+  warm." No remaining daily data can move it.
+- Market YES ≈ 22/23 — model and market within a couple of points, no edge.
+- Position per earlier notes: ~741 NO @ ~77¢. **UNVERIFIED** — see Auth below.
+- NOAA July print: Kalshi `expected_expiration_time` = **Aug 8, 10:00 ET**
+  (older notes said ~Aug 13; trust the API).
+
+### Open questions, ranked by money at risk
+
+1. **Translation slope drift** — full-sample fit says 28%; a 2018–2025 refit says
+   ~8%. The slope difference is z ≈ −2. **But out-of-sample testing says do not
+   switch**: shorter fit windows do not reduce RMSE and they double-to-triple the
+   bias. Keep the full fit; revisit as more high-ERA5 Julys accumulate. ~20 points.
+2. **Tie rule** — 10% of the distribution; reads NO, not airtight.
+3. **Record revision** — is NOAA still publishing 1.18 for July 2024? Never
+   checked. Cheap.
+
+### Validated results worth keeping
+
+- June 2026: model predicted 1.094, NOAA printed **1.09**. Exact.
+- Jul 28 2026: bias-anchored ECMWF predicted **+0.742**, actual **+0.742**. Exact.
+  Same day, AIFS (warmest AI ensemble) missed by −0.089, confirming its warm bias
+  on the first verification datapoint.
+- Translation σ is honest: out-of-sample RMSE 0.0364 vs in-sample 0.0360.
+- ERA5 `PRELIMINARY` → `FINAL` revisions run **+0.007** (6/6 positive). Small but
+  free and well-identified.
+
+### Anti-results — tested and rejected, do not redo
+
+- **EMA / short-window anchor offsets do not beat the flat 4-day mean.** Tested
+  May–July on production-validated data (n=60): every bootstrap CI includes zero.
+  Leave-one-month-out shows tuning α *loses* to flat in 2 of 3 folds; the
+  per-month optimum ranges 0.15–0.99. Linear trend extrapolation is catastrophic
+  (RMSE 0.10 vs 0.046).
+- The anchor offset is only ~8% of total variance. Perfecting it cannot move
+  P(YES) by more than ~3 points. **Translation σ dominates — that is where the
+  remaining value is** (roadmap #1).
+
+---
 
 ## Files
-- `Model_Analysis.ipynb` — full documented model (data → OLS translation → normal tail → EV/Kelly). Set `REFRESH=True` + Run All to update.
-- `Kalshi.ipynb` — market analytics: series history (Apr/May settled NO), flow decomposition (contracts vs dollars), NOAA record base rates (records cluster in El Niño bursts → cross-month NO correlation risk), fees/depth, hedging playbook, position calculator.
-- `Dashboard.html` — live dashboard. Serve: `python3 -m http.server 8000` here; auto-reloads `data.js` every 5 min.
-- `update_data.py` — data engine: fetches ERA5 (Climate Pulse CSV) + NOAA CAG JSONs + Kalshi public API (curl-based; python.org SSL certs are broken → keep using curl), recomputes model, writes `data.js`. Run `--loop 900` for 24/7. Climate files refetch only when >6h stale; validates downloads (truncation bugs happened).
-- `era5_daily.csv`, `noaa_m*.json`, `kalshi_data/` — cached source data. `gistemp.txt` — NASA GISTEMP (Polymarket's settlement source, different from NOAA).
 
-## Model (v1) in one line
-ERA5 daily → monthly mean → (incomplete month: OLS `full = c0 + c1·prev_month + c2·first_k_days`) → per-month OLS `NOAA = a + b·ERA5` (June: 0.585+0.903x, σ=0.046; July: 0.566+0.892x, σ=0.036; fit 1990–2025) → Normal tail vs record+0.005 (2-decimal rounding; 1.18 tie band tracked separately, no tie clause in Kalshi rules) → fair price → edge vs book → ¼-Kelly max, capped by depth (~$1–3k book).
-**2026 audit bias**: NOAA's Jan–May 2026 prints ran +0.020 warm vs historical mapping (Feb–Apr; Jan/May ≈ 0) → toggle in dashboard; honest fair = bracket between raw and biased.
+Every script resolves data via `os.path.join(HERE, …)`. **Do not move `.py`
+files, `era5_daily.csv`, `data.js`, `noaa_m*.json`, `gistemp.txt`, or
+`forecast_log/` out of the repo root.** `daily_check.py` and `update_data.py`
+hardcode the string `'July Calibration'` — that folder cannot be renamed.
 
-## State as of 2026-07-09 (June print day)
-- ✅ **JUNE SETTLED: NOAA printed +1.09 (Jul 9, detected 18:33Z)** — raw model predicted 1.094 (exact hit); the +0.02 bias knob would have said 1.114 (miss). Not a record (1.18 stands) → June NO pays (~937 NO held). **Bias datapoint #6 = −0.004**; last two prints (May, Jun) ≈ 0 → 2026 warm bias is DEAD, flat Jan–Jun knob now +0.016 (in data.js), honest recent bias ≈ 0 (EWMA switch still pending decision).
-- **🔴 Jul 18: SURGE CONFIRMING — model fair ≈ 45–55%, market YES 48/49 = FAIR. The trough NEVER verified** (Jul 14–16 actuals +0.560/+0.563/+0.566 vs fcst +0.43/+0.39/+0.47 — dev3 +0.134, SIX straight warm misses by ECMWF). k=16 mean +0.617, remaining 15d must avg +0.776. Fresh runs: ECMWF remaining **+0.749** (raw P 36%), ECMWF+measured bias **+0.85 → P 79%**, GFS **+0.840 → P 78%**, ICON +0.782/7d → P 32%; NWP blend 59%, tempered final ~50%. Tie-band cushion: 7–11% of outcomes print exactly 1.18 → NO. Kalshi repriced 22→48 in 2 days ($26k vol). **Felipe QUINTUPLED July NO into the drop: −1,529 contracts, $1,184 exposure vs $641 cash, avg cost ~77¢ → unrealized ≈ −$390; model edge at 48 = ZERO → model Kelly stake = $0, exposure ≈ 4× the $300 hard cap.** Decisive prints: Jul 19–25 (actuals for surge days 17–23, fcst +0.59–0.90).
-- **Jul 15 EVENING (12z runs): SURGE STRENGTHENED — P(YES) ≈ 19% (NWP blend 25%, forecast-free 10%).** ECMWF remaining jumped +0.543→+0.624 (converging to GFS +0.727, ICON +0.738/8d vs +0.741 needed); per-center P: ECMWF 5%, GFS 37%, ICON 41%. Surge now in ~6 consecutive runs/3 centers, days 19–23 forecast +0.6→+1.1 (GFS/ICON = above all-time daily record territory). Market YES 22/23 ≈ model fair — NO position edge ≈ gone at central; consider the GFS-scenario left tail. Trough bottoms Jul 14 (~+0.34–0.41 expected) then warming. Prints Jul 16–18 verify the trough; Jul 21+ verify the surge.
-- **🔴 JULY REPRICED (Jul 15, exhaustive multi-angle stress test — ~20 angles, `July Calibration/`): P(YES) ≈ 15% (range 5–25%), UP from 2%.** What changed: (1) dev3 tripwire FIRED — actuals ran +0.03/+0.05/+0.11 warmer than ECMWF 3 days straight (dip real but shallower); (2) **ALL THREE centers' Jul-15 00z runs forecast a late-July global heat surge** — GFS remaining-15d **+0.749 ≥ the +0.740 record pace** (peak +1.05 on Jul 22 = would smash all-time daily record), ICON +0.688/7d, ECMWF surge days 19–25 but cooler net +0.543 → per-center P: ECMWF 0.4–3%, GEM 11%, ICON 30%, **GFS 48%**; (3) my 0.15 jump-guard was CENSORING the real surge (validated real via hourly-vs-daily test; guard now 0.30 — `fetch_forecast.py`); (4) forecast-free methods never supported 2%: analogs 5.0–15.9%, AR(1) 4.6%, July base-rate for the needed back-loading 11/86=12.8% (2018 did +0.193; NOT unprecedented — my earlier rhetoric was wrong); (5) fit-window/LAD threshold robust 0.686–0.724 (current 0.693 = generous end); (6) ENSO bull thesis FAILS (developing-Niño Julys back-load LESS: 2/20); (7) settled-months evidence: Apr/May/Jun mid-month YES 8–14¢ → all decayed to NO (longshot premium documented); (8) GISTEMP June printed +1.18 (2nd-hottest GIS June, GIS running +0.09 warm vs NOAA 2026 → part of Polymarket 80% story). **Market YES 23–24¢ is now INSIDE the fair range — the "10x mispricing" thesis is DEAD; ~326 July NO edge has collapsed to marginal.** Arbitration: ERA5 prints Jul 16–19 (actuals for Jul 14–17) decide the surge; GFS-vs-ECMWF divergence (0.75 vs 0.54 remaining) is THE open question. Ensemble member endpoint quota-limited (only Jul-13 ECMWF members on file; retry off-peak).
-- **July (as of Jul 13): THE DIP VERIFIED.** Jul 10 actual +0.605 vs fcst +0.598 (dev +0.007); Jul 11 +0.559 vs +0.537 (dev +0.022) — dev3 +0.015, well inside the ±0.05 tripwire. Running mean rolled over: +0.663 (d9) → +0.648 (d11); record now needs **+0.719/day for 20 straight days** (month's hottest single day = +0.708). New IFS remaining-days mean **+0.378**. ENS μ=1.011, P(YES)≈**0.0%** (bracket ≤0.1%) vs **market YES still 24–25¢** (vol 7k) — market hasn't repriced the verified cooling. Held ~326 July NO. Ops notes: ERA5 upstream lagged 2 days (Jul 12–13, self-resolved); ENS `n/a` in track_log those days = transient fetch fail, works since. Dashboard July-only rebuild deployed (3 cards + IFS projection on tracking chart, `scatter_jul`/`runmean_fcst`/`c2` added to data.js). NOAA July print ~Aug 13 settles the market.
-- **Kalshi auth WORKS (prod key)**: `.env` + `kalshi_demo.pem` (misnamed — it's a prod key; demo rejects it). `kalshi_client.py` = read-only (balance/positions/fills), NO order code yet. Jul 9: balance $264, June NO ≈937, July NO ≈326.
-- **Poller lesson for the sniper**: print detected 18:33Z on poll 54 of a 60s loop started 12:45Z — the Mac slept mid-poll. Release-sniper needs `caffeinate`/cloud, not a laptop loop.
-- **User positions/decisions**: HOLDING 300 June NO @ 91¢ (settles Jul 9–10, model 94–97% to pay). SELLING 421.89 July NO @ 79¢ basis into ~78¢ bid (limits, 2–3 clips — thin book).
-- **Lessons logged**: (1) markets = contracts ≠ dollars — decompose taker flow before believing a price move; (2) WebFetch summaries can relabel months (moyhu May post was misreported as June — always verify archive/URL literally); (3) my own residual audit moved fair June YES from 2.2%→~5%; report brackets, not points.
-- Cross-platform: Polymarket June brackets settle on **NASA GISTEMP** (record 124; ties count INTO brackets) — different dataset, basis risk; NOAA's record is "softer" in σ terms so Kalshi YES should trade richer than Polymarket 1st.
-- **Q4 2026 warning**: CPC 63% very-strong El Niño NDJ; record months cluster in such bursts → Sep–Dec "NO everything" is the losing habit; YES may be the value side there.
+| Path | Role |
+|---|---|
+| `update_data.py` | Data engine: ERA5 + NOAA + Kalshi + IFS → recomputes model → writes `data.js`. Uses `curl` (python.org SSL certs are broken here — keep it). |
+| `daily_check.py` | Scheduled job: refresh → ensemble → rebuild → score forecast vs actual → append `track_log.csv` → notify. |
+| `fetch_forecast.py` | ECMWF IFS pull via Open-Meteo; `to_anomaly()` computes the anchor offset. |
+| `July Calibration/ens_spread.py` | 51-member IFS ensemble → member-level P(YES). Quota-limited; tolerate failure. |
+| `July Calibration/calibrate.py` | Kalman/rolling-β drift, HC1, ENSO σ tests, Kelly sizing. |
+| `backtest.py`, `overfit_test.py` | Out-of-sample calibration, tail shape, overfit audits. |
+| `kalshi_client.py` | **Read-only** (balance/positions/fills). No order code by design. |
+| `era5_watch.sh` | Polls for a given ERA5 day; logs publish time to `era5_release_times.csv`. Uses `caffeinate`. |
+| `Dashboard.html` | Live dashboard; reads `data.js`. Serve with `python3 -m http.server`. |
+| `Model_Analysis.ipynb`, `Kalshi.ipynb` | Documented model + market analytics. |
+| `docs/` | `HMONTH.pdf` (contract rules), spreadsheets, notes. Not read by code. |
+| `archive/` | Retired: June sniper, `variance_collapse.*`, legacy `noaa_june/july.json`. Zero references. |
 
-## July Calibration (2026-07-13, `July Calibration/`)
-- **51-member IFS ENS wired** (`ens_spread.py`, Open-Meteo ensemble API, member-level global means — the only way to get global-mean spread; 15° grid, ERA5-anchored, edge-day guard, rate-limit retries). **P(YES) ensemble-averaged: NOAA ≈ 2–3% (23/51 members >1%, hottest member 48%), GISTEMP-1st ≈ 5–7%** — the deterministic 0.0% point hid real member tail mass; my assumed fcst-error knob (0.022) was ~60% too tight vs measured member spread (0.035). ⚠️ OPEN QUESTION: ENS median remaining-days (~+0.54) runs ~0.15 WARMER than HRES+GFS (~0.38–0.45) — dev3 daily scoring arbitrates within days; until then quote the bracket, not either point.
-- **`calibrate.py`**: Kalman(numpy)+rolling β → drift negligible (Δb 0.031 → 0.017 °C); White HC1 → homoskedastic (×0.94); El Niño σ-expansion (live ONI, Levene p=0.95) → not significant; Kelly = worst-tail P(YES) (t19 / ENS / 0.5% floor) + ¼-Kelly + depth proxy + $300 hard cap. Declined as not-worth-it: C++ KF, EVT/Gumbel on n=36, CDS-NetCDF+GHCN-D daemon (dev3 tripwire + IFS-vs-GFS already covers divergence).
+### Automation
 
-## 🔴🔴 JULY FLIPPED TO NEAR-COINFLIP (Jul 18 evening, full re-verification — every step 2-path checked PASS)
-- k=16, mean +0.6172; **dip ended, reversed**: Jul 14–16 = +0.560/+0.563/+0.566, ALL above ECMWF fcst again (6 straight warm-verification days). Remaining 15 days need **+0.774**. vs record years at day 16: AHEAD of 2024 by +0.043 (!), behind 2023 by 0.109.
-- **KEY FACT: 2024 made its record with a back-half surge — at day 16 it sat +0.574 and its last 15 days averaged +0.796.** 2026 needs +0.774 from a base 0.043 higher = "repeat 2024's back half". GFS forecasts exactly that (rem +0.790 → P 57%); ICON similar (40%); ECMWF-det cold outlier (+0.613 → 2.7%) — **BUT fresh ECMWF 51-member ENS: min member +0.640 (det path colder than ALL members), median +0.684, 18/51 central paths break record → ENS-avg P(YES) NOAA = 42%, GISTEMP = 63%** (Polymarket 80% ~ no longer crazy). Full month now inside forecast horizon.
-- **Synthesis P(YES) ≈ 35% (range 25–50%).** Market YES 27/29 (vol 28k, oi 15.6k) — market slightly BELOW model fair now; fair NO ≈ 65 vs NO bid 71 → the ~326 July NO reads ~6¢ RICH per model. Arbitration: Jul 17 actual lands ~Jul 19 midday UTC (models 0.17 apart on that DAY-1 fcst: EC +0.529/GFS +0.647/ICON +0.701); surge-peak days verify Jul 21–24. ✅ 51-member P wired end-to-end (Jul 18 eve): daily_check runs `ens_spread.py` first (quota-tolerant) → update_data embeds `ens51` (<24h fresh) in data.js → dashboard ECMWF card headlines member P (det-path demoted to sub-line) → digest/track_log report member P.
-- Data schedule (empirically verified): ERA5 daily +2-day lag, updates ~06:00–12:35 UTC; model 00z on API ~05–08 UTC, 12z ~17–20 UTC; NOAA July print ~Aug 13 11:00 ET (settles Kalshi); GISTEMP July ~mid-Aug.
+launchd `com.hottestmonth.daily`, 07:15 local, runs `daily_check.py`.
 
-## Calendar
-~~Jul 9 NOAA June print~~ (done: 1.09) · Jul 11–13 ERA5 prints arbitrate the IFS dip · Jul 17–18 day-15 July checkpoint (σ halves) · Jul 28 day-26 (σ≈0.017, market still open) · ~Aug 13 NOAA July print · monthly thereafter.
+```bash
+launchctl kickstart -p gui/$UID/com.hottestmonth.daily
+```
 
-## Automation
-- **Daily 07:15 local** — launchd `com.hottestmonth.daily` runs `daily_check.py`: full refresh (ERA5+NOAA+Kalshi+IFS) → forecast-vs-actual deviation on verified days (leakage-free anchoring) → appends `track_log.csv` → macOS notification, ⚠️-prefixed if |3-day mean dev| > 0.05. Logs to `daily_check.log`. Fires on wake if the Mac slept through 07:15. Manage: `launchctl kickstart|bootout gui/$UID/com.hottestmonth.daily`; plist at `~/Library/LaunchAgents/com.hottestmonth.daily.plist`.
+Logs to `~/Library/Logs/hottestmonth-daily.log`. **The log path must stay outside
+`~/Desktop`** — launchd opens it before exec, and a TCC-protected path makes the
+job die with `EX_CONFIG (78)` without running a line. That silently killed the
+job for 8 days.
 
-## Improvement roadmap (agreed direction)
-1. **ECMWF open-data 15-day ensemble** (free, no key): add ensemble-mean of remaining days as 3rd predictor in the forecast OLS → shifts variance collapse ~10 days left. Biggest bang first.
-2. **NOAA-input replication**: GHCN-M v4 (`ncei.noaa.gov/pub/data/ghcn/v4/`) + ERSSTv5 prelim (~day 3–5) → replicate NOAAGlobalTemp; translation σ 0.047 → ~0.02. Regression skeleton stays, refit as NOAA ~ replication.
-3. **Kalshi authenticated API** (user creates key in Kalshi settings; store in local `.env`, never in chat): websocket book depth + flow surveillance + order placement. Paper-mode first, hard risk caps.
-4. **Rolling bias recalibration** (update the +0.02 knob each print, Kalman-style) · fat-tail (Student-t) option · backtest harness over 2015–2025 months.
-5. Climate Reanalyzer (CFS, no 2-day lag) as lag-killer input; NMME/C3S seasonal for pricing Sep–Dec before the crowd.
+### Auth
 
-## Speed/“HFT” reality (answered 2026-07-08)
-Not HFT — scheduled-event latency arbitrage. NOAA release time is known; a release-sniper (poll CAG JSON from ~10:59:50 ET, parse, fire Kalshi limit orders) wins by seconds with ~95–99% directional confidence when the gap is big. BUT capacity ≈ book depth ≈ $1–3k/event, ~12 events/yr → hundreds of dollars per event max. Build it as a cheap cron script, not infrastructure. Kalshi permits API trading; only public data used.
+`.env` + `kalshi_demo.pem` — the file is **misnamed; it is a production key**.
+`KALSHI_ENV` must be `prod`; with `demo` the API returns 401 and positions cannot
+be read. Never commit `.env` or `*.pem` (both gitignored).
+
+---
+
+## Data schedule (empirically measured)
+
+| Source | Timing |
+|---|---|
+| ERA5 daily | 2-day lag. Publishes **00:14–01:47 EDT** (n=5; the older "06:00–12:35 UTC" note was too late). Newest day is always `PRELIMINARY`. |
+| Model runs on API | 00z ≈ 01:00–04:00 EDT; 12z ≈ 13:00–16:00 EDT |
+| NOAA monthly print | ~day 8–14 of the following month, 10:00 ET |
+| GISTEMP | ~mid-month (Polymarket's source, **not** Kalshi's) |
+
+---
+
+## Roadmap, in value order
+
+1. **Reduce translation σ** — replicate NOAAGlobalTemp from GHCN-M v4 + ERSSTv5.
+   σ 0.036 → ~0.02. This is now the *only* lever that materially moves a
+   probability; everything else is noise around it.
+2. **Verify the record value** — is NOAA still publishing 1.18 for July 2024?
+3. **Multimodel consensus** (`../Global-Temperature-Model`) — GFS/GEFS/GEPS/GDPS/
+   ICON/IFS/AIFS at native resolution. Infrastructure is strong but it has almost
+   no verification history. **Anchor each center to ERA5 before using it.** Its
+   structural-uncertainty finding matters most mid-month, with 20+ forecast days
+   open — not in the final week.
+4. Release sniper for the NOAA print (needs an always-on host; the Mac sleeps).
+5. Q4 2026: CPC has 63% very-strong El Niño NDJ. Records cluster in such bursts —
+   "NO everything" is the losing habit there; YES may be the value side.
