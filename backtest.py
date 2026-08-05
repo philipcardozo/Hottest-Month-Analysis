@@ -136,31 +136,32 @@ def backtest():
         print("    2015-2025 mean=%+.3f   last-5 mean=%+.3f   dashboard knob=+0.020" %
               (np.mean(recent), np.mean(recent[-5:])))
 
-    # ---- [4] actionable: re-price live June/July markets Normal vs Student-t ----
+    # ---- [4] actionable: re-price the live prev/current markets Normal vs Student-t ----
     print("\n[4] LIVE re-pricing  Normal vs Student-t(nu=%.1f)  (fair YES %%)" % nu_mle)
     dj = json.loads(open(os.path.join(HERE, 'data.js')).read().split('=', 1)[1].rstrip(';\n'))
     model, kal = dj['model'], dj['kalshi']
     bias = model['bias']
-    thr = 1.185  # record 1.18 + 0.005 two-decimal rounding boundary
+    CUR, PREV = model['cur'], model['prev']
+    thr = round(model[CUR]['record'] + 0.005, 3)   # print must round UP past the record
 
     def p_yes(mu, sigma, nu):
         zt = (thr - mu) / sigma
         return stats.norm.sf(zt) * 100, stats.t.sf(zt * (math.sqrt(nu / (nu - 2)) if nu > 2 else 1), nu) * 100
 
-    # June: complete-ish translation, mu = a + b*era26
-    mu_jun = model['jun']['a'] + model['jun']['b'] * model['jun']['era26']
-    sig_jun = model['jun']['sd']
-    # July: forecast layer, mu from fc coefficients
-    fc = model['jul']['fc']; c = fc['c']
-    era_jul_fc = c[0] + c[1] * model['jun']['era26'] + c[2] * fc['firstk']
-    mu_jul = model['jul']['a'] + model['jul']['b'] * era_jul_fc
-    sig_jul = math.hypot(model['jul']['b'] * fc['sd_f'], model['jul']['sd'])
+    # previous month: complete translation, mu = a + b*era26
+    mu_prev = model[PREV]['a'] + model[PREV]['b'] * model[PREV]['era26']
+    sig_prev = model[PREV]['sd']
+    # current month: forecast layer, mu from fc coefficients
+    fc = model[CUR]['fc']; c = fc['c']
+    era_cur_fc = c[0] + c[1] * model[PREV]['era26'] + c[2] * fc['firstk']
+    mu_cur = model[CUR]['a'] + model[CUR]['b'] * era_cur_fc
+    sig_cur = math.hypot(model[CUR]['b'] * fc['sd_f'], model[CUR]['sd'])
 
-    for tag, mu, sig in (('JUN', mu_jun, sig_jun), ('JUL', mu_jul, sig_jul)):
+    for tag, mu, sig in ((PREV.upper(), mu_prev, sig_prev), (CUR.upper(), mu_cur, sig_cur)):
         for label, mu_ in (('raw', mu), ('bias-adj', mu + bias)):
             pn, pt = p_yes(mu_, sig, nu_mle)
             print("    %s %-9s mu=%.3f sig=%.3f | Normal YES=%5.1f%%  t YES=%5.1f%%  | mkt YES~%.0f" %
-                  (tag, label, mu_, sig, pn, pt, kal[tag]['yes_ask']))
+                  (tag, label, mu_, sig, pn, pt, kal.get(tag, {}).get('yes_ask', float('nan'))))
 
     # ---- self-check ----
     assert n > 50, "too few OOS points"

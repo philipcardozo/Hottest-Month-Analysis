@@ -8,14 +8,14 @@ P(YES) swing ~36% (obs-only) -> ~3.5% (ENS). Separates three possible causes:
 
 Run: python3 overfit_test.py
 """
-import json, math, os
+import calendar, json, math, os
 from collections import defaultdict
 import numpy as np
 from scipy import stats
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIT_YEARS = list(range(1990, 2026))
-THR = 1.185
+THR = None   # set from the live record in main(); tie settles NO -> record + 0.005
 
 
 def load():
@@ -35,12 +35,19 @@ def load():
     return daily, dj, anom
 
 
-def design(daily, k):
-    """X=(june_mean, first-k july mean), Y=full-july mean, over FIT_YEARS."""
+def design(daily, k, tm=7):
+    """X=(prev-month mean, first-k mean of month tm), Y=full-tm mean, over FIT_YEARS.
+    k=0 drops the first-k column entirely -- with no observed days there is no
+    such predictor, and the model degenerates to prev-month-only (same fallback
+    update_data.py uses on the 1st of a month)."""
     mm = lambda y, m: sum(daily[(y, m)].values()) / len(daily[(y, m)])
-    X = np.array([[1.0, mm(y, 6), sum(daily[(y, 7)][d] for d in range(1, k + 1)) / k]
-                  for y in FIT_YEARS])
-    Y = np.array([mm(y, 7) for y in FIT_YEARS])
+    pm = lambda y: mm(y - 1, 12) if tm == 1 else mm(y, tm - 1)
+    if k == 0:
+        X = np.array([[1.0, pm(y)] for y in FIT_YEARS])
+    else:
+        X = np.array([[1.0, pm(y), sum(daily[(y, tm)][d] for d in range(1, k + 1)) / k]
+                      for y in FIT_YEARS])
+    Y = np.array([mm(y, tm) for y in FIT_YEARS])
     return X, Y
 
 
@@ -58,14 +65,24 @@ def p_yes(mu_era, sd_f, jul):
 
 def main():
     daily, dj, anom = load()
-    jul = dj['model']['jul']
+    global THR
+    M = dj['model']
+    jul = M[M['cur']]
+    TM = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].index(M['cur']) + 1
+    YR = M['year']
+    PY, PM = (YR - 1, 12) if TM == 1 else (YR, TM - 1)
+    THR = round(jul['record'] + 0.005, 3)
     mm = lambda y, m: sum(daily[(y, m)].values()) / len(daily[(y, m)])
-    jun26 = mm(2026, 6)
-    obs = daily[(2026, 7)]
+    jun26 = mm(PY, PM)
+    obs = daily.get((YR, TM), {})
     k = len(obs)
-    obs_mean = sum(obs.values()) / k
+    ND = calendar.monthrange(YR, TM)[1]
+    # k=0 (first days of a month, ERA5 still 2 days behind): the persistence
+    # placebo has no observed days to persist, so persist the previous month --
+    # exactly the k=0 fallback update_data.py uses.
+    obs_mean = sum(obs.values()) / k if k else jun26
     fdays = sorted((int(t[8:]), v) for t, v in anom.items()
-                   if t.startswith('2026-07-') and int(t[8:]) > k)
+                   if t.startswith('%d-%02d-' % (YR, TM)) and int(t[8:]) > k)
     k_eff = fdays[-1][0]
     fc_mean_rem = sum(v for _, v in fdays) / len(fdays)
 
@@ -77,7 +94,7 @@ def main():
     print("\n[a] Regression honesty (3 params, %d yrs). Overfit <=> OOS >> in-sample." % len(FIT_YEARS))
     print("    %-6s %10s %10s %12s" % ("k", "in-sample", "LOO-RMSE", "expand-OOS"))
     for kk in (6, 15, 23):
-        X, Y = design(daily, kk)
+        X, Y = design(daily, kk, TM)
         _, sd_in = fit_sd(X, Y)
         loo = []
         for i in range(len(Y)):
@@ -97,10 +114,10 @@ def main():
     # ---- (b) placebo: does the k_eff machinery alone create the collapse? ----
     print("\n[b] Placebo — fill days %d..%d with PERSISTENCE (first-%d mean), same machinery:"
           % (k + 1, k_eff, k))
-    X23, Y23 = design(daily, k_eff)
+    X23, Y23 = design(daily, k_eff, TM)
     c23, sd23 = fit_sd(X23, Y23)
     errsum = sum(min(0.015 * max(d - k, 1) ** 0.7, 0.15) for d, _ in fdays)
-    sd_tot = math.hypot(sd23, 0.6 * errsum / 31)
+    sd_tot = math.hypot(sd23, 0.6 * errsum / ND)
 
     def pseudo_p(rem_mean):
         pm = (obs_mean * k + rem_mean * (k_eff - k)) / k_eff
@@ -109,9 +126,11 @@ def main():
 
     p_pers, mu_pers, _ = pseudo_p(obs_mean)
     p_fc, mu_fc, sig_fc = pseudo_p(fc_mean_rem)
-    X6, Y6 = design(daily, k)
+    X6, Y6 = design(daily, k, TM)
     c6, sd6 = fit_sd(X6, Y6)
-    p_obs, mu_obs, sig_obs = p_yes(c6 @ [1.0, jun26, obs_mean], sd6, jul)
+    # at k=0 the design has no first-k column, so the row must match its width
+    row6 = [1.0, jun26] if k == 0 else [1.0, jun26, obs_mean]
+    p_obs, mu_obs, sig_obs = p_yes(c6 @ row6, sd6, jul)
     print("    obs-only (k=%d):        P(YES)=%5.1f%%  mu=%.3f sig=%.3f" % (k, p_obs, mu_obs, sig_obs))
     print("    persistence placebo:    P(YES)=%5.1f%%  mu=%.3f  <- same sigma machinery, no NWP"
           % (p_pers, mu_pers))

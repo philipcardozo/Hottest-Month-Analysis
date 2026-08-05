@@ -55,7 +55,9 @@ def main():
             print("  JUN (live cache): mid-month YES ~%.0fc -> settled NO (print 1.09)"
                   % (sum(c[1] for c in mid) / len(mid)))
 
-    KL = dj['kalshi']['JUL']
+    KL = dj['kalshi'].get('JUL')
+    if not KL:
+        return
     tot_v = sum(c[2] for c in KL['candles'])
     vwap = sum(c[1] * c[2] for c in KL['candles']) / tot_v if tot_v else None
     print("\n[2] JULY market: last %.0fc, YES %.0f/%.0f, vol %.0f, OI %.0f, VWAP %.1fc"

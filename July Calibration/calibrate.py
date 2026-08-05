@@ -22,7 +22,7 @@ from scipy import stats
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 FIT_YEARS = list(range(1990, 2026))
-THR = 1.185
+THR = 1.185   # July 2026 campaign audit -- this script is pinned to July on purpose
 NU = 19.0                # backtest.py MLE on pooled OOS residuals
 HARD_CAP = 300.0         # $ per market, absolute
 
@@ -128,7 +128,11 @@ def main():
         print("    ONI fetch failed (%s) — skipping, rerun later" % ex)
 
     # ---- [4] Kelly, t-tails, caps ----
-    jul, kal = dj['model']['jul'], dj['kalshi']['JUL']
+    jul, kal = dj['model'].get('jul'), dj['kalshi'].get('JUL')
+    if not jul or not kal:
+        print("\n[skipped] live re-pricing: data.js no longer targets July "
+              "(run `python3 update_data.py --month 2026-07` to rebuild it)")
+        return
     ens = jul.get('ens')
     mu = jul['a'] + jul['b'] * ens['mu_era5']
     sig = math.hypot(jul['b'] * ens['sd_f'], jul['sd'])
