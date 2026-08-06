@@ -54,3 +54,5 @@ WARN dip-check: 2026-08-04 08:50Z AUG | k=1 mean +0.704 need +0.692 | ENS P(YES)
 WARN dip-check: 2026-08-04 09:02Z AUG | k=1 mean +0.704 need +0.692 | ENS P(YES) 66.9% | dev3 +0.074 | mkt YES 39.0/41.0 | refresh OK
 WARN dip-check: 2026-08-04 11:17Z AUG | k=1 mean +0.704 need +0.692 | ENS P(YES) 59.1% | dev3 +0.074 | mkt YES 39.0/42.0 | refresh OK
 WARN dip-check: 2026-08-04 11:37Z AUG | k=2 mean +0.706 need +0.691 | ENS P(YES) 66.3% | dev3 +0.087 | mkt YES 39.0/42.0 | refresh OK
+WARN dip-check: 2026-08-05 11:31Z AUG | k=3 mean +0.700 need +0.691 | ENS P(YES) 57.4% | dev3 +0.090 | mkt YES 36.0/40.0 | refresh OK
+WARN dip-check: 2026-08-05 15:00Z AUG | k=3 mean +0.700 need +0.691 | ENS P(YES) 56.6% | dev3 +0.090 | mkt YES 37.0/39.0 | refresh OK
