@@ -19,7 +19,7 @@ from collections import defaultdict
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.formatting.rule import CellIsRule
+from openpyxl.formatting.rule import CellIsRule, FormulaRule
 from openpyxl.chart import LineChart, BarChart, Reference, Series
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -38,6 +38,7 @@ COL = dict(date='A', actual='B', exp='C', dev='D', dev3='E', mtd='F',
            pace='R', modelc='S')      # R,S are chart helpers
 NAVY, BAND, GREEN, YELLOW, GREY = 'FF1F3864', 'FFD9E2F3', 'FFE2EFDA', 'FFFFF2CC', 'FFF2F2F2'
 BLUE_TXT, WHITE, RED = 'FF0000FF', 'FFFFFFFF', 'FFC00000'
+EXP_RED = 'FFE6B9B8'   # accent2 @ tint 0.6 — Expectation ran UNDER the actual
 ANOM, CENT, PCT, NUM0, MONEY = '+0.000;-0.000;0.000', '0.0', '0.0%', '#,##0', '$#,##0.00'
 F = lambda **kw: Font(name='Arial', **kw)
 THIN = Side(style='thin', color='FFBFBFBF')
@@ -50,6 +51,20 @@ def geom(nd):
     cal = m1 + 3                       # m1+1 MEAN row, m1+2 blank, then banner
     return dict(m1=m1, cal=cal, h0=cal + 2, h1=cal + 1 + (2026 - FITLO),
                 s0=cal + 2, s1=cal + 2 + nd)
+
+
+def exp_cf(ws, nd):
+    """Expectation (C) goes light red when the forecast came in UNDER the actual;
+    it keeps its green fill when it met or beat it. Conditional formatting, so it
+    re-evaluates itself as each day lands -- refresh() never has to touch styling.
+    Idempotent: only ever added once per sheet."""
+    rng = f'C{M0}:C{geom(nd)["m1"]}'
+    if any(str(cf.sqref) == rng for cf in ws.conditional_formatting):
+        return False
+    ws.conditional_formatting.add(rng, FormulaRule(
+        formula=[f'AND($B{M0}<>"",$C{M0}<>"",$C{M0}<$B{M0})'],
+        fill=PatternFill('solid', bgColor=EXP_RED)))
+    return True
 
 
 # ------------------------------------------------------------------ sources
@@ -514,6 +529,7 @@ def build_sheet(wb, d):
     ws.conditional_formatting.add('D12', CellIsRule(
         operator='equal', formula=['"DRIFT"'],
         fill=PatternFill('solid', bgColor='FFFFC7CE'), font=Font(bold=True)))
+    exp_cf(ws, d['nd'])
 
     banner(ws, f'A{CAL}:C{CAL}', f"CALIBRATION — {d['mname']} 1990–{d['year']-1}", 9)
     for i, h in enumerate(['Year', 'ERA5 mean', 'NOAA']):
@@ -703,6 +719,8 @@ def main():
             sys.exit(f"{name} does not exist — run with --build first.")
         ws = wb[name]
         n = refresh(ws, d)
+        if exp_cf(ws, d['nd']):        # one-time: only this month's sheet
+            print(f'  {name}: Expectation under/over colour rule added')
         print(f'{name}: {n} cell(s) updated '
               f'(k={sum(1 for r in d["rows"] if r["day"] and r["actual"] is not None)}, '
               f'ens={"yes" if d["ens"] else "none"}, '
